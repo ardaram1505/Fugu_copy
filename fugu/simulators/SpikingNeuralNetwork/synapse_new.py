@@ -5,10 +5,11 @@ import abc
 from collections import deque
 import sys
 import numpy as np
-from fugu.simulators.SpikingNeuralNetwork.neuron import Neuron
+from fugu.simulators.SpikingNeuralNetwork.neuron_new import Neuron
 from fugu.utils.types import float_types, int_types, str_types
 from fugu.utils.validation import int_to_float, validate_type
 from fugu.simulators.SpikingNeuralNetwork.learning_params import LearningParams
+# from fugu.simulators.SpikingNeuralNetwork.neuron_params import params
 
 if sys.version_info >= (3, 4):
     ABC = abc.ABC
@@ -16,7 +17,23 @@ else:
     ABC = abc.ABCMeta("ABC", (), {"__slots__": ()})
 
 
+
 class Synapse:
+    """
+    Synapses connect neurons in a neural network. The synapse class in a
+    scales the input by a weight (double) and relays the information with a delay (non-negative int) of n
+    time-steps.
+    Parameters:
+        neuron_conn (list): List, optional.  List of neurons in the synapse [pre_neuron, post_neuron, (mod_neuron)].
+        state (dict): Dict, optional.  State of the Synapse. The default is {}.
+        params (dict): Dict, optional.  Parameters of the Synapse. The default is {}.
+    Raises:
+        TypeError: if pre and post neurons are not of type neurons
+        TypeError: if delay is not of type Int
+        ValueError: if delay is less than 1
+    Returns:
+        none
+    """
 
     def __init__(self, neuron_conn=[], state = {}, params={}):
 
@@ -32,7 +49,7 @@ class Synapse:
         self._learning_rule = params.get('learning_rule', None)
         self._name_learning_rule = self._learning_rule if self._learning_rule != None else "default"
         if self._learning_rule is not None:
-            self.weight = state.get('weight', 1.0)
+            self._w = state.get('weight', 1.0)
         if self._learning_rule == "three_factor":
             self._mod = neuron_conn[2]
             self.eligibility_trace = state.get('eligibility_trace', 0.0)
@@ -46,23 +63,24 @@ class Synapse:
     time-steps.
     """
 
-    def __init__(self, pre_neuron : Neuron, post_neuron : Neuron, delay=1, weight=1.0):
+    def __init__(self, neuron_conn: list[Neuron], params: dict, state: dict):
         """
+        Constructor for Synapse class.
         Parameters:
-            pre_neuron (any): Neuron that provides input to the synapse
-            post_neuron (any): Neuron that receives the signals from the synapse
-            delay (int) : non-negative Int, optional.  Number of time steps needed to relay the scaled spike. The default is 1.
-            weight (double): optional.  Scaling value for incoming spike. The default is 1.0.
-
+            neuron_conn (list): List of neurons in the synapse [pre_neuron, post_neuron].
+            params (dict): Dict, optional.  Parameters of the Synapse. The default is {}.
+            state (dict): Dict, optional.  State of the Synapse. The default is {}.
         Raises:
             TypeError: if pre and post neurons are not of type neurons
             TypeError: if delay is not of type Int
             ValueError: if delay is less than 1
-
         Returns:
-            None
+            none
         """
-
+        pre_neuron = neuron_conn[0]
+        post_neuron = neuron_conn[1]
+        delay = params.get('delay', 1)
+        weight = params.get('weight', 1.0)
         if not isinstance(pre_neuron, Neuron) or not isinstance(post_neuron, Neuron):
             raise TypeError("Pre and Post Synanptic neurons must be of type Neuron")
 
@@ -133,6 +151,7 @@ class Synapse:
         new_weight = int_to_float(new_weight)
         validate_type(new_weight, float_types)
         self._w = new_weight
+        self.params['weight'] = new_weight
 
     @property
     def delay(self):
@@ -162,6 +181,7 @@ class Synapse:
             raise ValueError("delay must be a strictly positive (>0) int value")
 
         self._d = new_delay
+        self.params['delay'] = new_delay
 
     def set_params(self, new_delay=1, new_weight=1.0):
         """
@@ -179,8 +199,8 @@ class Synapse:
         validate_type(new_delay, int_types)
         validate_type(new_weight, float_types)
 
-        self.delay = new_delay
-        self.weight = new_weight
+        self.params['delay'] = new_delay
+        self.params['weight'] = new_weight
 
     def show_params(self):
         """
@@ -240,21 +260,25 @@ class LearningSynapse(Synapse):
         Weight (double): optional.  Scaling value for incoming spike. The default is 1.0.
         Mod_neuron (Neuron): optional. Modulatory neuron for transmitting either errors or other modulatory signals
     """
-
+    # Add defaults to the states
     def __init__(
         self,
-        pre_neuron: Neuron,
-        post_neuron: Neuron,
-        learning_rule: str = "STDP",
-        delay: int = 1,
-        weight: float = 1.0,
-        mod_neuron: Neuron = None,
-        learning_params = None
+        neuron_conn: list[Neuron],
+        state: dict,  
+        params: dict,
+        learning_params: LearningParams = None,  
     ):
+        self.params = params
+        self.state = state
+        pre_neuron = neuron_conn[0]
+        post_neuron = neuron_conn[1]
+        mod_neuron = neuron_conn[2] if len(neuron_conn) > 2 else None
         if not isinstance(pre_neuron, Neuron) or not isinstance(post_neuron, Neuron):
             raise TypeError("Pre and Post Synaptic neurons must be of type Neuron")
 
-        weight = int_to_float(weight)
+        weight = int_to_float(state.get("weight", 1.0))
+        delay = params.get("delay", 1)
+        learning_rule = params.get("learning_rule", "STDP")
         validate_type(delay, int_types)
         validate_type(weight, float_types)
         validate_type(learning_rule, str_types)
@@ -444,12 +468,21 @@ class LearningSynapse(Synapse):
    
 
 if __name__ == "__main__":
-    from fugu.simulators.SpikingNeuralNetwork.neuron import LIFNeuron
-
-    n1 = LIFNeuron("n1")
-    n2 = LIFNeuron("n2")
-    s = LearningSynapse(n1, n2, delay=1, weight=1.0)
-
+    from fugu.simulators.SpikingNeuralNetwork.neuron_new import LIFNeuron
+    spike_event = {"presynaptic_spike": set(), "spike_history": []}
+    neuron_state = {"voltage": 0}
+    neuron_params = {'threshold': 1.2, 'reset_voltage': 0.0, 'leakage_constant': 0.6, 'bias': 0, 'p': 0.2, 'scaling': False, 'scaling_factor': 0.5, 'record': False}
+    id_tuple_n1 = ("n1", 0)
+    id_tuple_n2 = ("n2", 0)
+    n1 = LIFNeuron(id_tuple_n1, params=neuron_params, state=neuron_state, spike_event=spike_event)
+    n2 = LIFNeuron(id_tuple_n2, params=neuron_params, state=neuron_state, spike_event=spike_event)
+    s = LearningSynapse([n1,n2], params={'delay': 1, 'learning_rule': 'STDP'}, state={'weight': 2.0})
+    
+    # syn_learn = LearningSynapse(params = {specific parameters})
+ 
+    # s = syn(syn_learn, [n1, n2], weight = 2.0)
+ 
+    
     try:
         s.delay = 0
     except:

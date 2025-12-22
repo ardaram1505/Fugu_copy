@@ -10,8 +10,9 @@ from collections.abc import Iterable
 import pandas as pd
 
 from fugu.simulators.SpikingNeuralNetwork.learning_params import LearningParams
-from fugu.simulators.SpikingNeuralNetwork.neuron import InputNeuron, LIFNeuron, Neuron
-from fugu.simulators.SpikingNeuralNetwork.synapse import LearningSynapse, Synapse
+from fugu.simulators.SpikingNeuralNetwork.neuron_new import InputNeuron, LIFNeuron, Neuron
+
+from fugu.simulators.SpikingNeuralNetwork.synapse_new import LearningSynapse, Synapse
 from fugu.utils.validation import validate_instance, validate_type
 from fugu.simulators.SpikingNeuralNetwork.input_encoding import InputEncoding
 
@@ -30,10 +31,11 @@ class NeuralNetwork:
         """
         if not new_neuron:
             self._nrn_count += 1
-            neuron = LIFNeuron(str(self._nrn_count))
+            id_tuple = (str(self._nrn_count), self._nrn_count)    
+            neuron = LIFNeuron(id_tuple)
         elif type(new_neuron) == str:
             self._nrn_count += 1
-            neuron = LIFNeuron(new_neuron)
+            neuron = LIFNeuron((new_neuron, self._nrn_count))
         elif isinstance(new_neuron, Neuron):
             self._nrn_count += 1
             neuron = new_neuron

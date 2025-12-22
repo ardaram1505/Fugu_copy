@@ -4,41 +4,37 @@
 import abc
 import numbers
 import sys
+from unicodedata import name
 
 import numpy as np
 from fugu.utils.types import bool_types, float_types, int_types, str_types
 from fugu.utils.validation import int_to_float, validate_type
 
-if sys.version_info >= (3, 4):
+if sys.version_info >= (3,   4):
     ABC = abc.ABC
 else:
     ABC = abc.ABCMeta("ABC", (), {"__slots__": ()})
 import sys
 
 
-
 class Neuron(ABC):
-    """
-    Abstract Base Class for Neurons. This class defines the minimum set of
-    properties of a Neuron.
-    """
 
     @abc.abstractmethod
-    def __init__(self, name=None, spike=False):
+    def __init__(self,id_tuple=(), state = {},spike_event={}, params = {}):
         """
         Constructor for a Base Neuron class
 
         Parameters:
-            name (any): String, optional.  Neuron name as a string. The default is None.
-            spike (bool): Bool, optional.  Spike state of the Neuron. The default is False.
-
-        Returns:
-            None
+            id_tuple (any): Tuple, optional.  Neuron id as a tuple. The default is ().
+            state (dict): Dict, optional.  State of the Neuron. The default is {}.
+            spike_event (dict): Dict, optional.  Spike event of the Neuron. The default is {}.
+            params (dict): Dict, optional.  Parameters of the Neuron. The default is {}.
         """
-
-        self.name = name
-        self.spike = False
-        self.spike_hist = []
+        
+        self.id_tuple = id_tuple                      
+        self.state = state
+        self.spike_event = spike_event
+        self.params = params
 
     @abc.abstractmethod
     def update_state(self):
@@ -46,6 +42,8 @@ class Neuron(ABC):
         Update the time evolution of the neuron state
         """
 
+# ADD A POPULATION CLASS TO INSTANTIATE MULTIPLE LIF NEURONS
+# Way to assign neurons or synapses in bulk instead of one at a time
 
 class LIFNeuron(Neuron):
     """
@@ -58,45 +56,34 @@ class LIFNeuron(Neuron):
 
     def __init__(
         self,
-        name=None,
-        threshold=0.0,
-        reset_voltage=0.0,
-        leakage_constant=1.0,
-        voltage=0.0,
-        bias=0.0,
-        p=1,
-        scaling_factor=0.1,
-        scaling=False,
-        record=False,
-    ):
+        id_tuple=None,
+        state={},
+        spike_event={},
+        params={}):
         """
         Constructor for LIFNeurons. Inherits from Neuron Base Class
 
-        Parameters:
-            name (any): String, optional.  String name of a neuron. The default is None.
-            threshold (Double) : optional.  Threshold value above while the neuron spikes. The default is 0.0.
-            reset_voltage (Double) : optional.  The voltage to which the neuron resets after spiking. The default is 0.0.
-            leakage_constant (Double) : optional. The rate at which the neuron voltage decays. The leakage with rate
-            m is calculated as m*v. A rate of m=1 indicates no leak. For
-            realistic models, 0<= m <=1. The default is 1.0.
-            voltage (Double) : optional.  Internal voltage of the neuron. The default is 0.0.
-            bias (Double) : optional. Constant bias voltage value that is added at every timestep. The default is 0.0
-            p (Double) : optional.  Probability of spiking if voltage exceeds threshold. p=1 indicates a deterministic neuron. The default is 1.0.
-            scaling_factor (Double) : optional. The factor by which the weights should be scaled down to.  Since we are scaling the
-            weights, the range should lie between  0 < scaling_factor <=1. The default is 0.1.
-            scaling (Bool) : optional. Indicates if the weights of the neuron need to undergo synaptic scaling or not.
-            record (Bool) : optional.  Indicates if a neuron spike state should be sensed with probes. Default is False.
-        Returns:
-            None
+        id_tuple (any): Tuple, optional.  Neuron id as a tuple. The default is ().
+        state (dict): Dict, optional.  State of the Neuron. The default is {}.
+        spike_event (dict): Dict, optional.  Spike event of the Neuron. The default is {}.
+        params (dict): Dict, optional.  Parameters of the Neuron. The default is {}.
         """
-
-        threshold = int_to_float(threshold)
-        reset_voltage = int_to_float(reset_voltage)
-        leakage_constant = int_to_float(leakage_constant)
-        voltage = int_to_float(voltage)
-        bias = int_to_float(bias)
-        p = int_to_float(p)
-        scaling_factor = int_to_float(scaling_factor)
+        self.id_tuple = id_tuple
+        self.state = state
+        self.spike_event = spike_event
+        self.params = params
+         
+        threshold = int_to_float(params['threshold'])
+        reset_voltage = int_to_float(params['reset_voltage'])
+        leakage_constant = int_to_float(params['leakage_constant'])
+        voltage = int_to_float(state['voltage'])
+        bias = int_to_float(params['bias'])
+        p = int_to_float(params['p'])
+        record = params['record']
+        scaling = params['scaling']
+        scaling_factor = int_to_float(params['scaling_factor'])
+        name = id_tuple[0]
+        id_val = id_tuple[1]
 
         validate_type(name, str_types)
         validate_type(threshold, float_types)
@@ -108,6 +95,21 @@ class LIFNeuron(Neuron):
         validate_type(scaling_factor, float_types)
         validate_type(scaling, bool_types)
         validate_type(record, bool_types)
+        validate_type(id_val, int_types)
+                # validate_type(scaling, bool_types)
+        # validate_type(record, bool_types)
+ 
+        self.name = id_tuple[0]
+        # self._V = params['voltage_threshold']
+        self._T = params['threshold']
+        self._R = params['reset_voltage']
+        self._m = params['leakage_constant']
+        self._b = params['bias']
+        self.scaling = params['scaling_factor']
+        self.v = state['voltage'] 
+        self.presyn = spike_event['presynaptic_spike']
+        self.spike_hist = spike_event['spike_history']
+
 
         if leakage_constant < 0 or leakage_constant > 1:
             raise UserWarning("For realistic models, leakage m should be in the interval [0, 1].")
@@ -117,7 +119,7 @@ class LIFNeuron(Neuron):
 
         if scaling_factor <= 0 or scaling_factor >=1:
             raise ValueError("Scaling factor must be in the interval (0,1]")
-
+        
         super(LIFNeuron, self).__init__()
         self.name = name
         self._T = threshold
@@ -125,11 +127,13 @@ class LIFNeuron(Neuron):
         self._m = leakage_constant
         self._b = bias  
         self.v = voltage
-        self.presyn = set()
         self.record = record
         self.scaling = scaling
         self.prob = p
         self._S = scaling_factor
+        self.spike = False
+        self.spike_hist = []
+
 
     @staticmethod   
     def scale_weights(weight_arr, scale):
@@ -231,7 +235,7 @@ class LIFNeuron(Neuron):
         Returns:
             set: set of presynaptic neurons
         """
-
+        self.spike_event['presynaptic_spike'] = self.presyn
         return self.presyn
 
     def get_presynaptic_weights(self):
@@ -256,6 +260,7 @@ class LIFNeuron(Neuron):
 
         for i, s in enumerate(self.presyn):
             s.weight = weight_arr[i]
+        self.spike_event['presynaptic_spike'] = self.presyn
 
     @property
     def scaling_factor(self):
@@ -352,36 +357,26 @@ class LIFNeuron(Neuron):
 
 
 class InputNeuron(Neuron):
-    """
-    Input Neuron. Inherits from class Neuron.
-    Input Neurons can read streaming inputs
-    """
-
-    def __init__(
-        self,
-        name=None,
-        threshold=0.1,
-        voltage=0.0,
-        frequency=100,
-        bins=100,
-        record=False,
-    ):
+    
+    def __init__(self, id_tuple=None, state={}, spike_event={},params={}):
         """
-        Constructor for the new input neuron class
+        Constructor for Input Neurons. Inherits from Neuron Base Class
 
-        Parameters:
-            name: String, optional. Input neuron name. The default is None.
-            threshold: double, optional. Threshold value above which the neuron spikes. The default is 0.1.
-            voltage: double, optional. Membrane voltage. The default is 0.0.
-            frequency: double, optional. Frequency of the Poisson spikes from the input data. The default is 100.
-            bins: double, optional. Number of bins for the Poisson spikes. The default is 100.
-            record: bool, optional. Indicates if a neuron spike state should be sensed with probes. The default is False.
-        Returns:
-            None
+        id_tuple (any): Tuple, optional.  Neuron id as a tuple. The default is ().
+        state (dict): Dict, optional.  State of the Neuron. The default is {}.
+        params (dict): Dict, optional.  Parameters of the Neuron. The default is {}.
         """
+        self.id_tuple = id_tuple
+        self.state = state
+        self.spike_event = spike_event
+        self.params = params
 
-        threshold = int_to_float(threshold)
-        voltage = int_to_float(voltage)
+        name = id_tuple[0]
+        threshold = int_to_float(params['threshold'])
+        voltage = int_to_float(state['voltage'])
+        frequency = params['frequency']
+        bins = params['bins']
+        record = params['record']
 
         validate_type(name, str_types)
         validate_type(threshold, float_types)
@@ -398,6 +393,7 @@ class InputNeuron(Neuron):
         self.record = record
         self.fr = frequency
         self.bins = bins
+        self.spike_hist = spike_event.get('spike_history', [])
 
     def connect_to_input(self, in_stream):
         """
@@ -416,19 +412,7 @@ class InputNeuron(Neuron):
         else:
             self._it = iter(in_stream)
 
-    def show_iterable(self):
-        """
-        Display the iterable input data stream.
 
-        Returns:
-            None
-        """
-        from itertools import tee
-
-        iter_copy = tee(self._it)
-        iter_list = list(iter_copy)
-        print(f"Input Neuron {self.name} has input stream {iter_list}")
-        print(f"The input stream has {np.count_nonzero(np.array(iter_list))} spikes")
 
     def show_iterable(self):
         """
@@ -493,16 +477,25 @@ class InputNeuron(Neuron):
     def __repr__(self):
         return "InputNeuron {self.name}".format(**locals())
 
-
 if __name__ == "__main__":
     print("Testing LIF Neuron:")
     print("Trying to set probability > 1")
+    spike_event = {"presynaptic_spike": set(), "spike_history": []}
+    state = {"voltage": 0}
+    params = {'threshold': 1.2, 'reset_voltage': 0.0, 'leakage_constant': 0.6, 'bias': 0, 'p': 1.2, 'scaling': False, 'scaling_factor': 0.5, 'record': False}
+    id_tuple = ("n1", 0)  
     try:
-        n1 = LIFNeuron("n1", 0.5, 0, 0.6, 0, p=1.2)
+        n1 = LIFNeuron(id_tuple=id_tuple, state=state, spike_event=spike_event, params=params)
     except:
         print("Raises type error since probability was greater than 1")
-
-    n1 = LIFNeuron("n1", threshold=1.2, reset_voltage=0.0, leakage_constant=0.6, voltage=1, p=1)
+    
+    # try:
+    #     n1 = LIFNeuron("n1", 0.5, 0, 0.6, 0, p=1.2)
+    # except:
+    #     print("Raises type error since probability was greater than 1")
+    params['p'] = 1.0
+    n1 = LIFNeuron(id_tuple=id_tuple, state=state, spike_event=spike_event, params=params)
+    # n1 = LIFNeuron("n1", threshold=1.2, reset_voltage=0.0, leakage_constant=0.6, voltage=1, p=1)
     print("Neuron with intial v = 1; leakage_constant=0.6:")
     print("Timestep 0:")
     n1.show_state()
@@ -511,9 +504,10 @@ if __name__ == "__main__":
     n1.show_state()
     print()
 
-    # Input Neuron
+    # Input Neuron 
     print("Testing Input Neuron")
-    n0 = InputNeuron("n0", threshold=0.1)
+    in_id = ("N0", 0)
+    n0 = InputNeuron(in_id, state=state, spike_event=spike_event, params={'threshold': 0.5, 'frequency': 100, 'bins': 10, 'record': False})
     try:
         n0.connect_to_input(2)
     except:
