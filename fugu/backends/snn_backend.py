@@ -34,17 +34,17 @@ class snn_Backend(Backend):
                 neuron_dict[neuron] = n
                 self.nn.add_neuron(n)
 
-        # Add all other neurons.
+        # Add all other neurons.    
         for neuron, props in self.fugu_graph.nodes.data():
             if neuron in neuron_dict: continue
-            Vinit   =       props.get('voltage',       0.0)
+            Vinit   =       props.get('voltage',       0.0) 
             Vspike  =       props.get('threshold',     1.0)
             Vreset  =       props.get('reset_voltage', 0.0)
             Vretain = 1.0 - props.get('decay',         0.0)
             Vbias   =       props.get('bias',          0.0)
             P       =       props.get('p',             1.0)
             if 'potential'        in props: Vinit   = props['potential']
-            if 'leakage_constant' in props: Vretain = props['leakage_constant']
+            if 'leakage_constant' in props: Vretainls = props['leakage_constant']
             n = snn.LIFNeuron(neuron, voltage=Vinit, threshold=Vspike, reset_voltage=Vreset, leakage_constant=Vretain, bias=Vbias, p=P, record=recordAll)
             neuron_dict[neuron] = n
             self.nn.add_neuron(n)
